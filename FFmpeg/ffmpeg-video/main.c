@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
     /* 打印封装格式的信息 */
     av_dump_format(formatContext, 0, argv[1], 0);
     
-    /* 找到视频流和音频流的的解码器参数 */
+    /* 找到视频流的解码器参数 */
     AVCodecParameters* videoCodecParams = NULL;
     int videoIndex = 0;
     for(unsigned i = 0; i < formatContext->nb_streams; i++)
