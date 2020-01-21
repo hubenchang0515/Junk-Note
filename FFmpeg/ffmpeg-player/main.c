@@ -41,42 +41,42 @@ int main(int argc, char* argv[])
     /* 打印封装格式的信息 */
     av_dump_format(formatContext, 0, argv[1], 0);
     
-    /* 找到第一个视频流的解码器参数 */
-    AVCodecParameters* codecParams = NULL;
+    /* 找到视频流和音频流的的解码器参数 */
+    AVCodecParameters* videoCodecParams = NULL;
     int videoIndex = 0;
-    for(int i = 0; i < formatContext->nb_streams; i++)
+    for(unsigned i = 0; i < formatContext->nb_streams; i++)
     {
         if(formatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
         {
-            codecParams = formatContext->streams[i]->codecpar;
+            videoCodecParams = formatContext->streams[i]->codecpar;
             videoIndex = i;
             break;
         }
     }
-    if(codecParams == NULL)
+    if(videoCodecParams == NULL)
     {
         fprintf(stderr, "Cannot find video stream.\n");
         return 1;
     }
     
     /* 根据解码器参数找到解码器 */
-    AVCodec* codec = avcodec_find_decoder(codecParams->codec_id);
-    if(codec == NULL)
+    AVCodec* videoCodec = avcodec_find_decoder(videoCodecParams->codec_id);
+    if(videoCodec == NULL)
     {
         fprintf(stderr, "avcodec_find_decoder failed.\n");
         return 1;
     }
     
     /* 为解码器分配内存，用来保存上下文 */
-    AVCodecContext* codecContext = avcodec_alloc_context3(codec);
-    if(codecContext == NULL)
+    AVCodecContext* videoCodecContext = avcodec_alloc_context3(videoCodec);
+    if(videoCodecContext == NULL)
     {
         fprintf(stderr, "avcodec_alloc_context3 failed.\n");
         return 1;
     }
     
     /* 初始化上下文 */
-    ret = avcodec_parameters_to_context(codecContext, codecParams);
+    ret = avcodec_parameters_to_context(videoCodecContext, videoCodecParams);
     if(ret < 0)
     {
         fprintf(stderr, "avcodec_parameters_to_context failed.\n");
@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
     }
     
     /* 打开解码器 */
-    ret = avcodec_open2(codecContext, codec, NULL);
+    ret = avcodec_open2(videoCodecContext, videoCodec, NULL);
     if(ret < 0)
     {
         fprintf(stderr, "avcodec_open2 failed.\n");
@@ -107,8 +107,8 @@ int main(int argc, char* argv[])
     
     /* 为解码后的YUV格式数据分配内存 */
     int bufSize = av_image_get_buffer_size(AV_PIX_FMT_YUV420P,
-                                           codecContext->width,
-                                           codecContext->height,
+                                           videoCodecContext->width,
+                                           videoCodecContext->height,
                                            1);
     const uint8_t* buffer = (const uint8_t*)av_malloc(bufSize);
     if(buffer == NULL)
@@ -120,8 +120,8 @@ int main(int argc, char* argv[])
                          yuvFrame->linesize,
                          buffer,
                          AV_PIX_FMT_YUV420P,
-                         codecContext->width,
-                         codecContext->height,
+                         videoCodecContext->width,
+                         videoCodecContext->height,
                          1);
     if(ret < 0)
     {
@@ -130,11 +130,11 @@ int main(int argc, char* argv[])
     }
     
     /* 创建SWS上下文，用于图像转换 */
-    struct SwsContext* swsContext = sws_getContext(codecContext->width,   // 源参数
-                                         codecContext->height,
-                                         codecContext->pix_fmt,
-                                         codecContext->width,   // 目标参数
-                                         codecContext->height,
+    struct SwsContext* swsContext = sws_getContext(videoCodecContext->width,   // 源参数
+                                         videoCodecContext->height,
+                                         videoCodecContext->pix_fmt,
+                                         videoCodecContext->width,   // 目标参数
+                                         videoCodecContext->height,
                                          AV_PIX_FMT_YUV420P,
                                          SWS_BICUBIC,
                                          NULL,
@@ -159,8 +159,8 @@ int main(int argc, char* argv[])
     SDL_Window* window = SDL_CreateWindow("FFmpeg-Player",
                                           SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED,
-                                          codecContext->width,
-                                          codecContext->height,
+                                          videoCodecContext->width,
+                                          videoCodecContext->height,
                                           SDL_WINDOW_OPENGL);
     if(window == NULL)
     {
@@ -183,8 +183,8 @@ int main(int argc, char* argv[])
     SDL_Texture* texture = SDL_CreateTexture(renderer, 
                                     SDL_PIXELFORMAT_IYUV,   // 格式应当与前面FFmpeg转换出的格式匹配
                                     SDL_TEXTUREACCESS_STREAMING,
-                                    codecContext->width,
-                                    codecContext->height);  
+                                    videoCodecContext->width,
+                                    videoCodecContext->height);  
     if(texture == NULL)
     {
         fprintf(stderr, "SDL_CreateTexture failed : %s .\n", SDL_GetError());
@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
         return 1;
     }
     
-    SDL_Rect rect = {0, 0, codecContext->width, codecContext->height};
+    SDL_Rect rect = {0, 0, videoCodecContext->width, videoCodecContext->height};
     
     /* 读取视频帧并显示到窗口上 */
     while(av_read_frame(formatContext, packet) == 0)
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
         }
         
         /* 将视频流发送给解码器 */
-        ret = avcodec_send_packet(codecContext, packet);
+        ret = avcodec_send_packet(videoCodecContext, packet);
         if (ret != 0)
         {
             printf("avcodec_send_packet() failed.\n");
@@ -226,7 +226,7 @@ int main(int argc, char* argv[])
         }
         
         /* 从解码器接收一个帧 */
-        ret = avcodec_receive_frame(codecContext, rawFrame);
+        ret = avcodec_receive_frame(videoCodecContext, rawFrame);
         if (ret != 0 && ret != AVERROR(EAGAIN))
         {
             printf("avcodec_receive_frame() failed %d.\n", ret);
@@ -238,7 +238,7 @@ int main(int argc, char* argv[])
                   (const uint8_t * const*)rawFrame->data,        // 源参数
                   rawFrame->linesize,
                   0,
-                  codecContext->height,
+                  videoCodecContext->height,
                   (uint8_t * const*)yuvFrame->data,        // 目标参数
                   yuvFrame->linesize);
                   
@@ -260,7 +260,7 @@ int main(int argc, char* argv[])
         SDL_RenderPresent(renderer);  
 
         // 延迟，非精确
-        SDL_Delay(40);
+        //SDL_Delay(40);
         av_packet_unref(packet);
 
         /* 关闭窗口 */
@@ -268,6 +268,10 @@ int main(int argc, char* argv[])
         if(0 == SDL_PollEvent(&e)) //捕获事件
         {
             continue;  //没有检测到事件，循环继续
+        }
+        else if(e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
+        {
+            break; // 按下ESC键
         }
         else if(e.type == SDL_QUIT)
         {
@@ -282,7 +286,7 @@ int main(int argc, char* argv[])
     //av_free(buffer);
     av_frame_free(&yuvFrame);
     av_frame_free(&rawFrame);
-    avcodec_close(codecContext);
+    avcodec_close(videoCodecContext);
     avformat_close_input(&formatContext);
 
     return 0;
